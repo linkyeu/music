@@ -42,7 +42,7 @@ class MyResNet18(nn.Module):
         return output
     
     
-def run_lightgmb(lgb_params, cat_names, train, test, holdout):
+def run_lightgmb(lgb_params, cat_names, train, test):
     # Prepare dataset for training
     cols_to_drop = [
         'id',
@@ -54,8 +54,8 @@ def run_lightgmb(lgb_params, cat_names, train, test, holdout):
     X = train.drop(cols_to_drop, axis=1, errors='ignore')
     y = train.target.values
     
-    X_holdout = holdout.drop(cols_to_drop, axis=1, errors='ignore')
-    y_holdout = holdout.target.values
+#     X_holdout = holdout.drop(cols_to_drop, axis=1, errors='ignore')
+#     y_holdout = holdout.target.values
 
     id_test = test.id.values
     X_test = test.drop(cols_to_drop[0], axis=1, errors='ignore')
@@ -107,6 +107,8 @@ def run_lightgmb(lgb_params, cat_names, train, test, holdout):
             )
         lgb_valid.raw_data = None
 
+ 
+
         model = lgb.train(
             params,
             lgb_train,
@@ -130,13 +132,11 @@ def run_lightgmb(lgb_params, cat_names, train, test, holdout):
 
             del importance, model_fnames, tuples
         
-        # use holdout for validation
-        p = model.predict(X_holdout, num_iteration=model.best_iteration)
-        err = roc_auc_score(y_holdout, p)
-#         p = model.predict(X.iloc[valid_index], num_iteration=model.best_iteration)
-#         err = roc_auc_score(y[valid_index], p)
 
-        print('{} auc: {}'.format(cnt + 1, err))
+        p = model.predict(X.iloc[valid_index], num_iteration=model.best_iteration)
+        err = roc_auc_score(y[valid_index], p)
+
+        print('{} holdout auc: {}'.format(cnt + 1, err))
         
         p = model.predict(X_holdout, num_iteration=model.best_iteration)
         holdout_err = roc_auc_score(y_holdout, p)
