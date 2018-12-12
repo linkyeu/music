@@ -1,6 +1,6 @@
 from scipy.stats import ks_2samp
 
-
+import featuretools as ft
 # Import libraries and set desired options
 import numpy as np
 import pandas as pd
