@@ -1,4 +1,83 @@
 from common import *
+import torch
+
+
+class GaussRankScaler():
+	def __init__( self ):
+		self.epsilon = 0.001
+		self.lower = -1 + self.epsilon
+		self.upper =  1 - self.epsilon
+		self.range = self.upper - self.lower
+
+	def fit_transform( self, X ):
+	
+		i = np.argsort( X, axis = 0 )
+		j = np.argsort( i, axis = 0 )
+
+		assert ( j.min() == 0 ).all()
+		assert ( j.max() == len( j ) - 1 ).all()
+		
+		j_range = len( j ) - 1
+		self.divider = j_range / self.range
+		
+		transformed = j / self.divider
+		transformed = transformed - self.upper
+		transformed = erfinv( transformed )
+		
+		return transformed
+
+
+#-----------------------------------------------------------------
+def add_feature_to_sparse(spars_matrxi, feature_array_or_matrix):
+    return hstack([spars_matrxi, feature_array_or_matrix])
+
+def check_lr_crossval(sparse_matrix, y, n_splits=2, balanced=True):
+    time_split = TimeSeriesSplit(n_splits=n_splits)
+    if balanced:
+        logit = LogisticRegression(C=1, random_state=17, class_weight='balanced')
+    else:
+        logit = LogisticRegression(C=1, random_state=17)
+    
+    cv_scores = cross_val_score(logit, sparse_matrix, y, cv=time_split, scoring='roc_auc', n_jobs=-1) 
+    print(cv_scores, cv_scores.mean(), cv_scores.std())
+    return cv_scores, cv_scores.mean(), cv_scores.std()
+
+
+def process_sites():
+    train_sites = train_df[sites].fillna(0).astype(np.int32)
+    test_sites = test_df[sites].fillna(0).astype(np.int32)
+    return train_sites, test_sites
+
+
+#-------------------------------------------------------------------
+def load_dataframes():
+    train_df = pd.read_csv('../data/train_sessions.csv', index_col='session_id')
+    test_df = pd.read_csv('../data/test_sessions.csv', index_col='session_id')
+
+    # Convert time1, ..., time10 columns to datetime type
+    times = ['time%s' % i for i in range(1, 11)]
+    train_df[times] = train_df[times].apply(pd.to_datetime)
+    test_df[times] = test_df[times].apply(pd.to_datetime)
+
+    # Sort the data by time
+    train_df = train_df.sort_values(by='time1')
+
+    # Look at the first rows of the training set
+    return train_df, test_df
+
+
+#-------------------------------------------------------------------
+# A helper function for writing predictions to a file
+def write_to_submission_file(predicted_labels, out_file,
+                             target='target', index_label="session_id"):
+    predicted_df = pd.DataFrame(predicted_labels,
+                                index = np.arange(1, predicted_labels.shape[0] + 1),
+                                columns=[target])
+    predicted_df.to_csv(out_file, index_label=index_label)
+    
+    
+#---------------------------------------------------------------------
+
 
 
 def make_submition(test_df, model, file_name):
@@ -64,7 +143,7 @@ def prepare_dataframe(PATH):
 #-------------------------------------------------------------
 class MyScheduler(object):
     def __init__(self, optimizer, last_epoch=-1):
-        if not isinstance(optimizer, Optimizer):
+        if not isinstance(optimizer, torch.optim.Optimizer):
             raise TypeError('{} is not an Optimizer'.format(
                 type(optimizer).__name__))
         self.optimizer = optimizer
@@ -164,7 +243,7 @@ def find_lr(net, dataloader, optimizer, criterion, init_value = 1e-8, final_valu
         inputs,labels = data
         inputs, labels = inputs.to(device), labels.to(device)
         optimizer.zero_grad()
-        outputs = net(inputs)
+        _, _, _, outputs = net(inputs) # many outputs from deeply supervized learning
         loss = criterion(outputs, labels)
         #Compute the smoothed loss
         avg_loss = beta * avg_loss + (1-beta) *loss.item()
